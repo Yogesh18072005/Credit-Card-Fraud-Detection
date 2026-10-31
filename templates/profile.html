@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile</title>
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap" rel="stylesheet">
+
+    <style>
+        .roboto-thin {
+            font-family: "Roboto", sans-serif;
+            font-weight: 100;
+            font-style: normal;
+        }
+        
+        .roboto-light {
+            font-family: "Roboto", sans-serif;
+            font-weight: 300;
+            font-style: normal;
+        }
+        
+        .roboto-regular {
+            font-family: "Roboto", sans-serif;
+            font-weight: 400;
+            font-style: normal;
+        }
+        
+        .roboto-medium {
+            font-family: "Roboto", sans-serif;
+            font-weight: 500;
+            font-style: normal;
+        }
+        
+        .roboto-bold {
+            font-family: "Roboto", sans-serif;
+            font-weight: 700;
+            font-style: normal;
+        }
+        
+        .roboto-black {
+            font-family: "Roboto", sans-serif;
+            font-weight: 900;
+            font-style: normal;
+        }
+        
+        .profile {
+            position: relative;
+            /* border: 2px solid white; */
+            padding: 50px;
+            border-radius: 10px;
+        }
+        
+        .navbar-brand {
+            font-size: 1.5rem;
+        }
+        
+        .nav-item a {
+            display: block;
+            position: relative;
+            text-decoration: none;
+            font-size: 1.2rem;
+        }
+        
+        .nav-item a:after {
+            content: "";
+            position: absolute;
+            bottom: 3px;
+            left: 7px;
+            width: 100%;
+            height: 0.1em;
+            background-color: rgb(0, 0, 0);
+            border-radius: 25%;
+            opacity: 0;
+            transition: opacity 0.5s, transform 0.5s;
+        }
+        
+        .nav-item .slide {
+            min-height: inherit;
+            overflow: hidden;
+        }
+        
+        .nav-item .slide:after {
+            transform: translate3d(-100%, 0, 0);
+        }
+        
+        .nav-item .slide:hover:after {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+            z-index: -1;
+        }
+        
+        body {
+            color: white;
+        }
+    </style>
+</head>
+
+<body class="bg-black">
+
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
+        <div class="container">
+            <a class="navbar-brand roboto-thin" href="#">Credit Card Fraud Detection</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link slide roboto-light" href="/home">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link slide roboto-light" href="/admin">Model</a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle roboto-light" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            {{ username }}<i class="fa fa-chevron-down text-sm ml-1"></i>
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                            <li><a class="dropdown-item roboto-light" href="/profile">Profile</a></li>
+                            <li><a class="dropdown-item roboto-light" href="/logout">Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    <br>
+    <!-- Profile Form -->
+    <div class="profile container-xl px-4 mt-4">
+        <hr class="mt-0 mb-8">
+        <div class="d-flex justify-content-center">
+            <div class="col-xl-8">
+                <!-- Account details card -->
+                <div class="card mb-4">
+                    <div class="card-header roboto-medium">Account Details</div>
+                    <div class="card-body">
+                        <form method="POST" action="/profile/update">
+                            <!-- Form Group (username) -->
+                            <div class="mb-3">
+                                <label class="small mb-1 roboto-medium " for="inputUsername">Username (how your name will appear to other users on the site)</label>
+                                <input class="form-control roboto-light" id="inputUsername" type="text" placeholder="Enter your username" value="{{ username }}" readonly>
+                            </div>
+                            <!-- Form Row -->
+                            <div class="row gx-3 mb-3">
+                                <!-- Form Group (first name) -->
+                                <div class="col-md-6">
+                                    <label class="small mb-1 roboto-medium" for="inputFirstName">First name</label>
+                                    <input class="form-control roboto-light" id="inputFirstName" type="text" name="first_name" placeholder="Enter your first name" value="{{ user_data.first_name if user_data else '' }}">
+                                </div>
+                                <!-- Form Group (last name) -->
+                                <div class="col-md-6">
+                                    <label class="small mb-1 roboto-medium" for="inputLastName">Last name</label>
+                                    <input class="form-control roboto-light" id="inputLastName" type="text" name="last_name" placeholder="Enter your last name" value="{{ user_data.last_name if user_data else '' }}">
+                                </div>
+                            </div>
+                            <!-- Form Row -->
+                            <div class="row gx-3 mb-3">
+                                <!-- Form Group (organization name) -->
+                                <div class="col-md-6">
+                                    <label class="small mb-1 roboto-medium" for="inputOrgName">Organization name</label>
+                                    <input class="form-control roboto-light" id="inputOrgName" type="text" name="organization_name" placeholder="Enter your organization name" value="{{ user_data.organization_name if user_data else '' }}">
+                                </div>
+                                <!-- Form Group (location) -->
+                                <div class="col-md-6">
+                                    <label class="small mb-1 roboto-medium" for="inputLocation">Location</label>
+                                    <input class="form-control roboto-light" id="inputLocation" type="text" name="location" placeholder="Enter your location" value="{{ user_data.location if user_data else '' }}">
+                                </div>
+                            </div>
+                            <!-- Form Group (email address) -->
+                            <div class="mb-3">
+                                <label class="small mb-1 roboto-medium" for="inputEmailAddress">Email address</label>
+                                <input class="form-control roboto-light" id="inputEmailAddress" type="email" placeholder="Enter your email address" value="{{ user_data.email if user_data else '' }}" readonly>
+                            </div>
+                            <!-- Form Row -->
+                            <div class="row gx-3 mb-3">
+                                <!-- Form Group (phone number) -->
+                                <div class="col-md-6">
+                                    <label class="small mb-1 roboto-medium" for="inputPhone">Phone number</label>
+                                    <input class="form-control roboto-light" id="inputPhone" type="tel" name="phone_number" placeholder="Enter your phone number" value="{{ user_data.phone_number if user_data else '' }}">
+                                </div>
+                                <!-- Form Group (birthday) -->
+                                <div class="col-md-6">
+                                    <label class="small mb-1 roboto-medium" for="inputBirthday">Birthday</label>
+                                    <input class="form-control roboto-light" id="inputBirthday" type="date" name="birthday" placeholder="Enter your birthday" value="{{ user_data.birthday if user_data else '' }}">
+                                </div>
+                            </div>
+                            <!-- Save changes button -->
+                            <button class="btn btn-primary roboto-medium" type="submit">Save changes</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <!-- jQuery -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+</body>
+
+</html>
