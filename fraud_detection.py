@@ -100,7 +100,7 @@ def evaluate_fraud_dataset(
     test_size: float = 0.2,
     random_state: int = 42,
 ) -> dict[str, Any]:
-    """Fit models on a stratified training split and evaluate on held-out rows."""
+    """Tune supervised thresholds on validation data and evaluate on held-out rows."""
     if not isinstance(frame, pd.DataFrame) or frame.empty:
         raise ValueError("The uploaded CSV is empty.")
     if not 0.1 <= test_size <= 0.4:
@@ -154,6 +154,19 @@ def evaluate_fraud_dataset(
     results: dict[str, Any] = {}
     fitted_pipelines: dict[str, Pipeline] = {}
     for name, estimator in models.items():
+        validation_pipeline = Pipeline([
+            ("preprocessor", _build_preprocessor(X_fit)),
+            ("model", estimator),
+        ])
+        validation_pipeline.fit(X_fit, y_fit if name != "Isolation Forest" else None)
+        if name == "Isolation Forest":
+            threshold = 0.0
+        elif hasattr(validation_pipeline, "predict_proba"):
+            validation_scores = validation_pipeline.predict_proba(X_validation)[:, 1]
+            threshold = _best_f1_threshold(y_validation, validation_scores)
+        else:
+            validation_scores = validation_pipeline.decision_function(X_validation)
+            threshold = _best_f1_threshold(y_validation, validation_scores)
         pipeline = Pipeline([
             ("preprocessor", _build_preprocessor(X_train)),
             ("model", estimator),
@@ -162,13 +175,10 @@ def evaluate_fraud_dataset(
         fitted_pipelines[name] = pipeline
         if name == "Isolation Forest":
             scores = -pipeline.decision_function(X_test)
-            threshold = 0.0
         elif hasattr(pipeline, "predict_proba"):
             scores = pipeline.predict_proba(X_test)[:, 1]
-            threshold = 0.5
         else:
             scores = pipeline.decision_function(X_test)
-            threshold = 0.0
         predictions = (scores >= threshold).astype(int)
         model_result = _metrics(y_test, predictions, scores, threshold)
         model_result["error_rate"] = 1.0 - model_result["accuracy"]
