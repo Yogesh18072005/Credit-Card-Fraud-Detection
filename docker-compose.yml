@@ -1,0 +1,29 @@
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:?Set FLASK_SECRET_KEY in your environment}
+      MONGO_URI: mongodb://mongo:27017/fraud_detection
+      COOKIE_SECURE: "false"
+      MODEL_DIR: /app/models
+    volumes:
+      - fraud_models:/app/models
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+volumes:
+  mongo_data:
+  fraud_models:
