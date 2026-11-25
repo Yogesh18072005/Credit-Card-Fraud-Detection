@@ -299,7 +299,13 @@
         {% endif %}
 
     {% if chart_data is defined %}
-    <section class="container my-5"><div class="card text-dark"><div class="card-header">Interactive Model Performance</div><div class="card-body"><canvas id="metricsChart"></canvas></div></div></section>
+    <section class="container my-5">
+      <div class="card text-dark mb-4"><div class="card-header">Interactive Model Performance</div><div class="card-body"><canvas id="metricsChart"></canvas></div></div>
+      <div class="card text-dark"><div class="card-header">Feature Explainability — {{ explanation_model }}</div><div class="card-body">
+        <p class="text-muted">Permutation importance estimates how shuffling each feature changes average precision; it does not establish causation.</p>
+        <canvas id="importanceChart"></canvas>
+      </div></div>
+    </section>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
       const metrics = {{ chart_data|tojson }};
@@ -307,6 +313,10 @@
         {label:"Precision",data:metrics.precision},{label:"Recall",data:metrics.recall},{label:"F1",data:metrics.f1},
         {label:"ROC-AUC",data:metrics.roc_auc},{label:"PR-AUC",data:metrics.pr_auc}]},
         options:{responsive:true,scales:{y:{beginAtZero:true,max:1}}}});
+      new Chart(document.getElementById("importanceChart"), {type:"bar",
+        data:{labels:{{ feature_importance|map(attribute="feature")|list|tojson }},
+          datasets:[{label:"Permutation importance",data:{{ feature_importance|map(attribute="importance")|list|tojson }} }]},
+        options:{responsive:true,indexAxis:"y"}});
     </script>
     {% endif %}
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
