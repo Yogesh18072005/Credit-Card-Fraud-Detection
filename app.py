@@ -205,6 +205,19 @@ def predict():
         app.logger.exception("Fraud analysis failed")
         return "The dataset could not be analyzed. Check its columns and values.", 422
     models = analysis["models"]
+    try:
+        model_manifest = save_model_artifacts(analysis)
+    except OSError:
+        app.logger.exception("Could not persist trained model artifacts")
+        model_manifest = None
+    chart_data = {
+        "labels": list(models.keys()),
+        "precision": [models[name]["precision"] for name in models],
+        "recall": [models[name]["recall"] for name in models],
+        "f1": [models[name]["f1"] for name in models],
+        "roc_auc": [models[name]["roc_auc"] for name in models],
+        "pr_auc": [models[name]["pr_auc"] for name in models],
+    }
     return render_template(
         "admin.html",
         username=session["username"],
@@ -222,6 +235,10 @@ def predict():
         logistic_classification_report=models["Logistic Regression"]["classification_report"],
         model_metrics=models,
         analysis=analysis,
+        chart_data=chart_data,
+        feature_importance=analysis["feature_importance"],
+        explanation_model=analysis["explanation_model"],
+        model_manifest=model_manifest,
     )
 
 
