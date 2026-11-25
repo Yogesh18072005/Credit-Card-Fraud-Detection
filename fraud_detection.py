@@ -8,6 +8,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import IsolationForest, RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
+from sklearn.inspection import permutation_importance
 from sklearn.metrics import (
     accuracy_score,
     average_precision_score,
@@ -16,6 +17,7 @@ from sklearn.metrics import (
     confusion_matrix,
     f1_score,
     precision_score,
+    precision_recall_curve,
     recall_score,
     roc_auc_score,
 )
@@ -63,7 +65,15 @@ def _build_preprocessor(features: pd.DataFrame) -> ColumnTransformer:
     return ColumnTransformer(transformers=transformers, remainder="drop")
 
 
-def _metrics(y_true: pd.Series, predictions: Any, scores: Any) -> dict[str, Any]:
+def _best_f1_threshold(y_true: pd.Series, scores: Any) -> float:
+    precision, recall, thresholds = precision_recall_curve(y_true, scores)
+    if len(thresholds) == 0:
+        return 0.5
+    f1_values = 2 * precision[:-1] * recall[:-1] / (precision[:-1] + recall[:-1] + 1e-12)
+    return float(thresholds[int(f1_values.argmax())])
+
+
+def _metrics(y_true: pd.Series, predictions: Any, scores: Any, threshold: float) -> dict[str, Any]:
     matrix = confusion_matrix(y_true, predictions, labels=[0, 1])
     tn, fp, fn, tp = matrix.ravel()
     return {
@@ -75,6 +85,7 @@ def _metrics(y_true: pd.Series, predictions: Any, scores: Any) -> dict[str, Any]
         "specificity": float(tn / (tn + fp)) if (tn + fp) else 0.0,
         "roc_auc": float(roc_auc_score(y_true, scores)),
         "pr_auc": float(average_precision_score(y_true, scores)),
+        "threshold": float(threshold),
         "classification_report": classification_report(
             y_true, predictions, labels=[0, 1],
             target_names=["Legitimate", "Fraud"], zero_division=0
@@ -109,11 +120,16 @@ def evaluate_fraud_dataset(
     X = data.drop(columns=[target])
     if X.empty:
         raise ValueError("The CSV must contain at least one feature besides the target.")
-    if y.value_counts().min() < 2:
-        raise ValueError("At least two examples of each class are required for a stratified train/test split.")
+    if y.value_counts().min() < 4:
+        raise ValueError("At least four examples of each class are required for train, validation, and test splits.")
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=test_size, random_state=random_state, stratify=y
+    )
+    if y_train.value_counts().min() < 2:
+        raise ValueError("Not enough examples of each class remain for model validation.")
+    X_fit, X_validation, y_fit, y_validation = train_test_split(
+        X_train, y_train, test_size=0.25, random_state=random_state, stratify=y_train
     )
     fraud_rate = float(y_train.mean())
     contamination = min(max(fraud_rate, 0.001), 0.5)
@@ -157,14 +173,40 @@ def evaluate_fraud_dataset(
         model_result["error_rate"] = 1.0 - model_result["accuracy"]
         results[name] = model_result
 
+    best_model_name = max(
+        ("Linear SVM", "Logistic Regression", "Random Forest"),
+        key=lambda model_name: results[model_name]["pr_auc"],
+    )
+    explain_rows = min(len(X_test), 500)
+    importance = permutation_importance(
+        fitted_pipelines[best_model_name],
+        X_test.iloc[:explain_rows],
+        y_test.iloc[:explain_rows],
+        scoring="average_precision",
+        n_repeats=3,
+        random_state=random_state,
+        n_jobs=1,
+    )
+    feature_importance = [
+        {"feature": str(feature), "importance": float(score)}
+        for feature, score in sorted(
+            zip(X.columns, importance.importances_mean),
+            key=lambda item: item[1], reverse=True
+        )[:10]
+    ]
+
     return {
         "target_column": target,
         "rows_analyzed": int(len(data)),
         "training_rows": int(len(X_train)),
+        "validation_rows": int(len(X_validation)),
         "testing_rows": int(len(X_test)),
         "fraudulent_count": int(y.sum()),
         "non_fraudulent_count": int((y == 0).sum()),
         "fraud_rate": float(y.mean()),
         "statistical_analysis": data.describe(include="all").fillna("").to_string(),
         "models": results,
+        "feature_importance": feature_importance,
+        "explanation_model": best_model_name,
+        "pipelines": fitted_pipelines,
     }
