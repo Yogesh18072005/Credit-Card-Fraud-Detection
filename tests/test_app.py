@@ -1,4 +1,9 @@
 import json
+from io import BytesIO
+
+import joblib
+import pandas as pd
+from sklearn.pipeline import Pipeline
 
 from sklearn.dummy import DummyClassifier
 
@@ -46,3 +51,28 @@ def test_saved_model_inference_requires_a_registered_artifact(tmp_path, monkeypa
     )
     assert response.status_code == 404
     assert b"No saved model" in response.data
+
+
+def test_saved_model_api_returns_predictions(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.MODEL_DIR", tmp_path)
+    app.config["TESTING"] = True
+    pipeline = Pipeline([("model", DummyClassifier(strategy="prior"))])
+    training = pd.DataFrame({"amount": [10, 20, 30, 40]})
+    pipeline.fit(training, [0, 0, 1, 1])
+    joblib.dump(pipeline, tmp_path / "random_forest.joblib")
+    (tmp_path / "manifest.json").write_text(json.dumps({
+        "models": {"Random Forest": {"file": "random_forest.joblib", "threshold": 0.5}}
+    }), encoding="utf-8")
+
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session["username"] = "test-user"
+    response = client.post(
+        "/api/predict",
+        data={"model": "Random Forest", "file": (BytesIO(b"amount\\n15\\n35\\n"), "new.csv")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["rows"] == 2
+    assert len(response.get_json()["predictions"]) == 2
