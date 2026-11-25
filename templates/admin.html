@@ -236,6 +236,68 @@
     </div>
 
 
+
+        {% if model_metrics is defined and model_metrics %}
+        <section class="container mt-5 mb-5" aria-labelledby="comparison-title">
+            <div class="card text-dark">
+                <div class="card-header">
+                    <h2 id="comparison-title" class="h4 mb-0">Model Performance Comparison</h2>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">All metrics below are calculated on the held-out test split. For imbalanced fraud data, compare recall, F1, ROC-AUC and PR-AUC rather than accuracy alone.</p>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Model</th>
+                                    <th scope="col">Accuracy</th>
+                                    <th scope="col">Balanced accuracy</th>
+                                    <th scope="col">Precision</th>
+                                    <th scope="col">Recall</th>
+                                    <th scope="col">F1</th>
+                                    <th scope="col">ROC-AUC</th>
+                                    <th scope="col">PR-AUC</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for model_name, metrics in model_metrics.items() %}
+                                <tr>
+                                    <th scope="row">{{ model_name }}</th>
+                                    <td>{{ "%.3f"|format(metrics.accuracy) }}</td>
+                                    <td>{{ "%.3f"|format(metrics.balanced_accuracy) }}</td>
+                                    <td>{{ "%.3f"|format(metrics.precision) }}</td>
+                                    <td>{{ "%.3f"|format(metrics.recall) }}</td>
+                                    <td>{{ "%.3f"|format(metrics.f1) }}</td>
+                                    <td>{{ "%.3f"|format(metrics.roc_auc) }}</td>
+                                    <td>{{ "%.3f"|format(metrics.pr_auc) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <h3 class="h5 mt-4">Confusion matrices</h3>
+                    <p class="text-muted small">Rows are actual labels (legitimate, fraud); columns are predicted labels (legitimate, fraud).</p>
+                    <div class="row">
+                        {% for model_name, metrics in model_metrics.items() %}
+                        <div class="col-md-6 col-xl-3 mb-3">
+                            <div class="border rounded p-3 h-100">
+                                <h4 class="h6">{{ model_name }}</h4>
+                                <table class="table table-sm table-bordered text-center mb-0">
+                                    <thead><tr><th></th><th>Pred. 0</th><th>Pred. 1</th></tr></thead>
+                                    <tbody>
+                                        <tr><th>Actual 0</th><td>{{ metrics.confusion_matrix[0][0] }}</td><td>{{ metrics.confusion_matrix[0][1] }}</td></tr>
+                                        <tr><th>Actual 1</th><td>{{ metrics.confusion_matrix[1][0] }}</td><td>{{ metrics.confusion_matrix[1][1] }}</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </section>
+        {% endif %}
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
 </body>
