@@ -41,7 +41,7 @@ def test_saved_model_inference_requires_a_registered_artifact(tmp_path, monkeypa
 
     response = client.post(
         "/api/predict",
-        data={"model": "Random Forest", "file": ( __import__("io").BytesIO(b"amount,merchant\\n10,A\\n"), "transactions.csv")},
+        data={"model": "Random Forest", "file": (__import__("io").BytesIO(b""), "transactions.csv")},
         content_type="multipart/form-data",
     )
     assert response.status_code == 404
