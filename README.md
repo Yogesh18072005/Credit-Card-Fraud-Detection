@@ -9,8 +9,8 @@ A Flask web application for exploring credit-card transaction datasets and compa
 - Validates the target labels instead of silently inventing fraud labels.
 - Handles numeric and categorical features, including missing feature values.
 - Splits data into stratified training and held-out test sets before fitting models.
-- Compares Isolation Forest, Linear SVM, and Logistic Regression.
-- Reports accuracy, precision, recall, F1 score, confusion matrices, and classification reports.
+- Compares Isolation Forest, Linear SVM, Logistic Regression, and Random Forest.
+- Reports accuracy, balanced accuracy, precision, recall, specificity, F1, ROC-AUC, PR-AUC, confusion matrices, and classification reports.
 - Includes automated tests and a GitHub Actions workflow.
 
 > **Important:** This is an educational demonstration, not a payment decision system. Metrics depend on the uploaded dataset and class balance. Do not use the output to approve or decline real transactions.
@@ -89,8 +89,9 @@ The pipeline uses a stratified train/test split with a fixed random seed. Prepro
 - **Isolation Forest** learns an anomaly boundary from the training features; its outlier predictions are mapped to the fraud label.
 - **Linear SVM** provides a scalable margin-based classifier.
 - **Logistic Regression** provides a linear probabilistic classification baseline.
+- **Random Forest** adds a non-linear ensemble baseline with class-balanced bootstrap sampling.
 
-Accuracy alone can be misleading for highly imbalanced fraud data. Compare precision, recall, F1, and the confusion matrix as well. The current comparison uses a default decision threshold and is intended for learning, not production calibration.
+Accuracy alone can be misleading for highly imbalanced fraud data. Compare balanced accuracy, precision, recall, F1, ROC-AUC, PR-AUC, specificity, and the confusion matrix as well. The results page presents a side-by-side model comparison and individual confusion matrices. The current comparison uses a default decision threshold and is intended for learning, not production calibration.
 
 ## Tests
 
