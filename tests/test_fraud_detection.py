@@ -15,10 +15,13 @@ def sample_data():
 def test_evaluation_uses_a_held_out_test_set_and_returns_three_models():
     result = evaluate_fraud_dataset(sample_data())
     assert result["training_rows"] + result["testing_rows"] == result["rows_analyzed"]
-    assert set(result["models"]) == {"Isolation Forest", "Linear SVM", "Logistic Regression"}
+    assert set(result["models"]) == {"Isolation Forest", "Linear SVM", "Logistic Regression", "Random Forest"}
     for metrics in result["models"].values():
         assert 0 <= metrics["accuracy"] <= 1
         assert len(metrics["confusion_matrix"]) == 2
+        assert 0 <= metrics["balanced_accuracy"] <= 1
+        assert 0 <= metrics["roc_auc"] <= 1
+        assert 0 <= metrics["pr_auc"] <= 1
 
 
 def test_missing_target_is_rejected_instead_of_inventing_labels():
