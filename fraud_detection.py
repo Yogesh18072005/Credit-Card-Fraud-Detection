@@ -152,24 +152,25 @@ def evaluate_fraud_dataset(
     }
 
     results: dict[str, Any] = {}
+    fitted_pipelines: dict[str, Pipeline] = {}
     for name, estimator in models.items():
         pipeline = Pipeline([
             ("preprocessor", _build_preprocessor(X_train)),
             ("model", estimator),
         ])
         pipeline.fit(X_train, y_train if name != "Isolation Forest" else None)
-        raw_predictions = pipeline.predict(X_test)
+        fitted_pipelines[name] = pipeline
         if name == "Isolation Forest":
-            predictions = (raw_predictions == -1).astype(int)
             scores = -pipeline.decision_function(X_test)
+            threshold = 0.0
         elif hasattr(pipeline, "predict_proba"):
-            predictions = raw_predictions
             scores = pipeline.predict_proba(X_test)[:, 1]
+            threshold = 0.5
         else:
-            predictions = raw_predictions
             scores = pipeline.decision_function(X_test)
-
-        model_result = _metrics(y_test, predictions, scores)
+            threshold = 0.0
+        predictions = (scores >= threshold).astype(int)
+        model_result = _metrics(y_test, predictions, scores, threshold)
         model_result["error_rate"] = 1.0 - model_result["accuracy"]
         results[name] = model_result
 
