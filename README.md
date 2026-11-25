@@ -10,6 +10,9 @@ A Flask web application for exploring credit-card transaction datasets and compa
 - Handles numeric and categorical features, including missing feature values.
 - Splits data into stratified training and held-out test sets before fitting models.
 - Compares Isolation Forest, Linear SVM, Logistic Regression, and Random Forest.
+- Tunes supervised classification thresholds on a separate validation split before final held-out testing.
+- Calculates permutation feature importance for the best supervised model by PR-AUC.
+- Saves trained pipelines and thresholds locally with joblib and displays interactive charts.
 - Reports accuracy, balanced accuracy, precision, recall, specificity, F1, ROC-AUC, PR-AUC, confusion matrices, and classification reports.
 - Includes automated tests and a GitHub Actions workflow.
 
@@ -93,6 +96,24 @@ The pipeline uses a stratified train/test split with a fixed random seed. Prepro
 
 Accuracy alone can be misleading for highly imbalanced fraud data. Compare balanced accuracy, precision, recall, F1, ROC-AUC, PR-AUC, specificity, and the confusion matrix as well. The results page presents a side-by-side model comparison and individual confusion matrices. The current comparison uses a default decision threshold and is intended for learning, not production calibration.
 
+## Docker deployment
+
+The repository includes Docker and Docker Compose configuration for the Flask application and MongoDB.
+
+```powershell
+Copy-Item .env.example .env
+# Edit .env and set FLASK_SECRET_KEY to a long random value.
+docker compose --env-file .env up --build
+```
+
+Open http://localhost:5000. Compose persists MongoDB data and trained model artifacts in named volumes. For production, use HTTPS and set `COOKIE_SECURE=true`.
+
+## Saved models and explainability
+
+After analysis, the application saves the latest fitted pipelines under `MODEL_DIR` (default: `models/`) as joblib files. A `manifest.json` records model filenames, selected thresholds, PR-AUC values, and the creation time. Only load model files created by this application: joblib/pickle files can execute code and must never be accepted from untrusted uploads.
+
+Permutation importance is calculated on a capped sample of held-out rows for the best supervised model by PR-AUC. It is a global explanation aid, not a causal explanation. Supervised thresholds are selected on validation data to maximize F1; Isolation Forest keeps its anomaly boundary threshold.
+
 ## Tests
 
 ```powershell
@@ -120,6 +141,6 @@ GitHub Actions runs these checks on pushes and pull requests to `main`.
 
 ## Limitations and next steps
 
-- The application currently trains models when a CSV is uploaded; it does not provide a persistent model registry or production inference service.
+- The application saves the latest trained pipelines locally; it does not yet provide a versioned model registry or a separate production inference API.
 - MongoDB is required for normal account operations.
-- Add dataset-specific threshold tuning, model persistence, audit logging, and deployment monitoring before considering any production use.
+- Add audit logging, drift monitoring, authenticated inference APIs, and a versioned model registry before considering production use.

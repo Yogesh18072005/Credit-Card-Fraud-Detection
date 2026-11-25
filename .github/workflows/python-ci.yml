@@ -24,3 +24,5 @@ jobs:
         run: pytest -q
       - name: Compile Python files
         run: python -m compileall -q .
+      - name: Build Docker image
+        run: docker build -t fraud-detection-app:test .
