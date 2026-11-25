@@ -114,6 +114,19 @@ After analysis, the application saves the latest fitted pipelines under `MODEL_D
 
 Permutation importance is calculated on a capped sample of held-out rows for the best supervised model by PR-AUC. It is a global explanation aid, not a causal explanation. Supervised thresholds are selected on validation data to maximize F1; Isolation Forest keeps its anomaly boundary threshold.
 
+### Saved-model inference API
+
+After logging in, send a multipart CSV upload to `POST /api/predict` with a `file` field and optional `model` field. Supported model names are `Isolation Forest`, `Linear SVM`, `Logistic Regression`, and `Random Forest`. The inference CSV must contain exactly the feature columns used for training (no target column). The JSON response includes predicted labels, raw model scores, the selected threshold, and the number of predicted fraud rows.
+
+Example with curl (after obtaining an authenticated session cookie):
+
+```bash
+curl -X POST http://127.0.0.1:5000/api/predict \
+  -b session.txt \
+  -F "model=Random Forest" \
+  -F "file=@unlabelled_transactions.csv"
+```
+
 ## Tests
 
 ```powershell
