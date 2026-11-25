@@ -298,6 +298,17 @@
         </section>
         {% endif %}
 
+    {% if chart_data is defined %}
+    <section class="container my-5"><div class="card text-dark"><div class="card-header">Interactive Model Performance</div><div class="card-body"><canvas id="metricsChart"></canvas></div></div></section>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+      const metrics = {{ chart_data|tojson }};
+      new Chart(document.getElementById("metricsChart"), {type:"bar",data:{labels:metrics.labels,datasets:[
+        {label:"Precision",data:metrics.precision},{label:"Recall",data:metrics.recall},{label:"F1",data:metrics.f1},
+        {label:"ROC-AUC",data:metrics.roc_auc},{label:"PR-AUC",data:metrics.pr_auc}]},
+        options:{responsive:true,scales:{y:{beginAtZero:true,max:1}}}});
+    </script>
+    {% endif %}
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
 </body>
