@@ -29,7 +29,34 @@ app.config.update(
 MONGO_URI = os.getenv("MONGO_URI")
 mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000, connectTimeoutMS=5000) if MONGO_URI else None
 users = mongo_client["user_database"]["users"] if mongo_client is not None else None
+MODEL_DIR = Path(os.getenv("MODEL_DIR", "models"))
 DEMO_LOGIN_ENABLED = os.getenv("DEMO_LOGIN_ENABLED", "false").lower() == "true"
+
+
+def save_model_artifacts(analysis):
+    """Save only pipelines trained by this application; never load uploaded pickle files."""
+    pipelines = analysis.pop("pipelines")
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "target_column": analysis["target_column"],
+        "models": {},
+    }
+    for model_name, pipeline in pipelines.items():
+        slug = model_name.lower().replace(" ", "_")
+        destination = MODEL_DIR / f"{slug}.joblib"
+        temporary = MODEL_DIR / f".{slug}.tmp"
+        joblib.dump(pipeline, temporary)
+        os.replace(temporary, destination)
+        manifest["models"][model_name] = {
+            "file": destination.name,
+            "threshold": analysis["models"][model_name]["threshold"],
+            "pr_auc": analysis["models"][model_name]["pr_auc"],
+        }
+    temporary_manifest = MODEL_DIR / ".manifest.tmp"
+    temporary_manifest.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    os.replace(temporary_manifest, MODEL_DIR / "manifest.json")
+    return manifest
 
 
 def get_users_collection():
