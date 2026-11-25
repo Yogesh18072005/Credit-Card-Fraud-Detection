@@ -1,15 +1,17 @@
-"""Reusable, leakage-safe training and evaluation for binary fraud datasets."""
+"""Leakage-safe model training and evaluation for binary fraud datasets."""
 from __future__ import annotations
 
 from typing import Any
 
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import IsolationForest
+from sklearn.ensemble import IsolationForest, RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
+    average_precision_score,
+    balanced_accuracy_score,
     classification_report,
     confusion_matrix,
     f1_score,
@@ -43,19 +45,14 @@ def _find_target(frame: pd.DataFrame, target_column: str | None) -> str:
 def _build_preprocessor(features: pd.DataFrame) -> ColumnTransformer:
     numeric_columns = features.select_dtypes(include=["number", "bool"]).columns.tolist()
     categorical_columns = [c for c in features.columns if c not in numeric_columns]
-
-    numeric_pipeline = Pipeline(
-        steps=[
-            ("imputer", SimpleImputer(strategy="median")),
-            ("scaler", StandardScaler()),
-        ]
-    )
-    categorical_pipeline = Pipeline(
-        steps=[
-            ("imputer", SimpleImputer(strategy="most_frequent")),
-            ("encoder", OneHotEncoder(handle_unknown="ignore")),
-        ]
-    )
+    numeric_pipeline = Pipeline([
+        ("imputer", SimpleImputer(strategy="median")),
+        ("scaler", StandardScaler()),
+    ])
+    categorical_pipeline = Pipeline([
+        ("imputer", SimpleImputer(strategy="most_frequent")),
+        ("encoder", OneHotEncoder(handle_unknown="ignore")),
+    ])
     transformers: list[tuple[str, Any, list[str]]] = []
     if numeric_columns:
         transformers.append(("numeric", numeric_pipeline, numeric_columns))
@@ -66,19 +63,24 @@ def _build_preprocessor(features: pd.DataFrame) -> ColumnTransformer:
     return ColumnTransformer(transformers=transformers, remainder="drop")
 
 
-def _metrics(y_true: pd.Series, predictions: Any) -> dict[str, Any]:
-    result: dict[str, Any] = {
+def _metrics(y_true: pd.Series, predictions: Any, scores: Any) -> dict[str, Any]:
+    matrix = confusion_matrix(y_true, predictions, labels=[0, 1])
+    tn, fp, fn, tp = matrix.ravel()
+    return {
         "accuracy": float(accuracy_score(y_true, predictions)),
+        "balanced_accuracy": float(balanced_accuracy_score(y_true, predictions)),
         "precision": float(precision_score(y_true, predictions, zero_division=0)),
         "recall": float(recall_score(y_true, predictions, zero_division=0)),
         "f1": float(f1_score(y_true, predictions, zero_division=0)),
+        "specificity": float(tn / (tn + fp)) if (tn + fp) else 0.0,
+        "roc_auc": float(roc_auc_score(y_true, scores)),
+        "pr_auc": float(average_precision_score(y_true, scores)),
         "classification_report": classification_report(
             y_true, predictions, labels=[0, 1],
             target_names=["Legitimate", "Fraud"], zero_division=0
         ),
-        "confusion_matrix": confusion_matrix(y_true, predictions, labels=[0, 1]).tolist(),
+        "confusion_matrix": matrix.tolist(),
     }
-    return result
 
 
 def evaluate_fraud_dataset(
@@ -87,7 +89,7 @@ def evaluate_fraud_dataset(
     test_size: float = 0.2,
     random_state: int = 42,
 ) -> dict[str, Any]:
-    """Train on a stratified training split and report metrics only on held-out data."""
+    """Fit models on a stratified training split and evaluate on held-out rows."""
     if not isinstance(frame, pd.DataFrame) or frame.empty:
         raise ValueError("The uploaded CSV is empty.")
     if not 0.1 <= test_size <= 0.4:
@@ -121,21 +123,37 @@ def evaluate_fraud_dataset(
             n_estimators=200, contamination=contamination,
             random_state=random_state, n_jobs=-1
         ),
-        "Linear SVM": LinearSVC(class_weight="balanced", random_state=random_state, max_iter=5000),
+        "Linear SVM": LinearSVC(
+            class_weight="balanced", random_state=random_state, max_iter=5000
+        ),
         "Logistic Regression": LogisticRegression(
             class_weight="balanced", max_iter=1000, random_state=random_state
+        ),
+        "Random Forest": RandomForestClassifier(
+            n_estimators=250, class_weight="balanced_subsample",
+            random_state=random_state, n_jobs=-1
         ),
     }
 
     results: dict[str, Any] = {}
     for name, estimator in models.items():
-        pipeline = Pipeline(
-            steps=[("preprocessor", _build_preprocessor(X_train)), ("model", estimator)]
-        )
+        pipeline = Pipeline([
+            ("preprocessor", _build_preprocessor(X_train)),
+            ("model", estimator),
+        ])
         pipeline.fit(X_train, y_train if name != "Isolation Forest" else None)
         raw_predictions = pipeline.predict(X_test)
-        predictions = (raw_predictions == -1).astype(int) if name == "Isolation Forest" else raw_predictions
-        model_result = _metrics(y_test, predictions)
+        if name == "Isolation Forest":
+            predictions = (raw_predictions == -1).astype(int)
+            scores = -pipeline.decision_function(X_test)
+        elif hasattr(pipeline, "predict_proba"):
+            predictions = raw_predictions
+            scores = pipeline.predict_proba(X_test)[:, 1]
+        else:
+            predictions = raw_predictions
+            scores = pipeline.decision_function(X_test)
+
+        model_result = _metrics(y_test, predictions, scores)
         model_result["error_rate"] = 1.0 - model_result["accuracy"]
         results[name] = model_result
 
