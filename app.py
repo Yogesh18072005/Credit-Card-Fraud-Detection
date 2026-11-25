@@ -1,242 +1,208 @@
 import os
+from functools import wraps
+
+import bcrypt
 import pandas as pd
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, redirect, render_template, request, session, url_for
 from pymongo import MongoClient
-import bcrypt
-from sklearn.ensemble import IsolationForest
-from sklearn.svm import SVC
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, classification_report
-from sklearn.preprocessing import LabelEncoder
+from pymongo.errors import PyMongoError
+from werkzeug.utils import secure_filename
 
-
-# -------------------------------
-# 1️⃣ CREATE FLASK APP FIRST
-# -------------------------------
-app = Flask(__name__)
-app.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
-
-# -------------------------------
-# 2️⃣ CONFIG
-# -------------------------------
-UPLOAD_FOLDER = 'uploads'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+from fraud_detection import evaluate_fraud_dataset
 
 load_dotenv()
+
+app = Flask(__name__)
+app.config.update(
+    SECRET_KEY=os.getenv("FLASK_SECRET_KEY") or os.urandom(32),
+    MAX_CONTENT_LENGTH=16 * 1024 * 1024,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.getenv("COOKIE_SECURE", "false").lower() == "true",
+)
+
 MONGO_URI = os.getenv("MONGO_URI")
-
-# Database
-client = MongoClient(MONGO_URI)
-db = client['user_database']
-collection = db['users']
+mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000, connectTimeoutMS=5000) if MONGO_URI else None
+users = mongo_client["user_database"]["users"] if mongo_client is not None else None
+DEMO_LOGIN_ENABLED = os.getenv("DEMO_LOGIN_ENABLED", "false").lower() == "true"
 
 
-# -------------------------------
-# 3️⃣ ROUTES
-# -------------------------------
-@app.route('/')
+def get_users_collection():
+    if users is None:
+        raise RuntimeError("MongoDB is not configured. Set MONGO_URI in your environment.")
+    return users
+
+
+def login_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if "username" not in session:
+            return redirect(url_for("login_page"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+@app.errorhandler(413)
+def file_too_large(_error):
+    return "The uploaded file exceeds the 16 MB limit.", 413
+
+
+@app.route("/")
 def index():
-    return render_template('index.html')
+    return render_template("index.html", demo_login_enabled=DEMO_LOGIN_ENABLED)
 
 
-@app.route('/register')
+@app.route("/register", methods=["GET"])
 def register_page():
-    return render_template('login.html')
+    return render_template("login.html")
 
 
-@app.route('/register', methods=['POST'])
+@app.route("/register", methods=["POST"])
 def register():
-    username = request.form['username']
-    password = request.form['password']
-    email = request.form['email']
+    username = request.form.get("username", "").strip()
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+    if not username or not email or len(password) < 8:
+        session["error"] = "Enter a username, valid email, and password with at least 8 characters."
+        return redirect(url_for("register_page"))
+    try:
+        collection = get_users_collection()
+        if collection.find_one({"$or": [{"username": username}, {"email": email}]}):
+            session["error"] = "That username or email is already registered."
+            return redirect(url_for("register_page"))
+        collection.insert_one({
+            "username": username,
+            "email": email,
+            "password": bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()),
+        })
+    except (RuntimeError, PyMongoError):
+        app.logger.exception("Registration could not access MongoDB")
+        return "Account registration is temporarily unavailable. Configure MongoDB and try again.", 503
+    return redirect(url_for("login_page"))
 
-    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
 
-    if collection.find_one({'username': username}):
-        session['error'] = "Username already exists!"
-        return redirect(url_for('register_page'))
-    elif collection.find_one({'email': email}):
-        session['error'] = "Email already exists!"
-        return redirect(url_for('register_page'))
-
-    user_data = {
-        'username': username,
-        'password': hashed_password,
-        'email': email
-    }
-    collection.insert_one(user_data)
-
-    return redirect(url_for('login_page'))
-
-
-@app.route('/login')
+@app.route("/login", methods=["GET"])
 def login_page():
     return render_template("login.html")
 
 
-@app.route('/login', methods=['POST'])
+@app.route("/login", methods=["POST"])
 def login():
-    username = request.form.get('username')
-    password = request.form.get('password')
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    if DEMO_LOGIN_ENABLED and username == "demo" and password == os.getenv("DEMO_PASSWORD", ""):
+        session.clear()
+        session.update(username="Demo User", demo=True)
+        return redirect(url_for("dashboard"))
+    try:
+        user = get_users_collection().find_one({"username": username})
+    except (RuntimeError, PyMongoError):
+        app.logger.exception("Login could not access MongoDB")
+        return "Login is temporarily unavailable. Configure MongoDB and try again.", 503
+    if user and bcrypt.checkpw(password.encode("utf-8"), user["password"]):
+        session.clear()
+        session["username"] = user["username"]
+        return redirect(url_for("dashboard"))
+    session["error"] = "Invalid username or password."
+    return redirect(url_for("login_page"))
 
-    # Dummy login allowed
-    if username == 'dummy' and password == 'dummy':
-        session['username'] = 'Demo User'
-        return redirect(url_for('dashboard', username='Demo User'))
 
-    user = collection.find_one({'username': username})
-
-    if user and bcrypt.checkpw(password.encode('utf-8'), user['password']):
-        session['username'] = user['username']
-        return redirect(url_for('dashboard', username=user['username']))
-
-    session['error'] = "Invalid username or password"
-    return redirect(url_for('login_page'))
-
-
-@app.route('/dashboard')
+@app.route("/dashboard")
+@login_required
 def dashboard():
-    if 'username' not in session:
-        return redirect(url_for('login_page'))
-    return render_template("dashboard.html", username=session['username'])
+    return render_template("dashboard.html", username=session["username"])
 
 
-@app.route('/home')
+@app.route("/home")
+@login_required
 def home():
-    if 'username' not in session:
-        return redirect(url_for('login_page'))
-    return render_template("home.html", username=session['username'])
+    return render_template("home.html", username=session["username"])
 
 
-@app.route('/admin')
+@app.route("/admin")
+@login_required
 def admin_page():
-    if 'username' not in session:
-        return redirect(url_for('login_page'))
-    return render_template("admin.html", username=session['username'])
+    return render_template("admin.html", username=session["username"])
 
 
-@app.route('/profile')
+@app.route("/profile")
+@login_required
 def profile_page():
-    if 'username' not in session:
-        return redirect(url_for('login_page'))
+    user_data = None
+    if not session.get("demo"):
+        try:
+            user_data = get_users_collection().find_one({"username": session["username"]})
+        except (RuntimeError, PyMongoError):
+            app.logger.exception("Profile could not access MongoDB")
+            return "Profile service is temporarily unavailable.", 503
+    return render_template("profile.html", username=session["username"], user_data=user_data)
 
-    user_data = collection.find_one({'username': session['username']})
-    return render_template("profile.html", username=session['username'], user_data=user_data)
 
-
-@app.route('/profile/update', methods=['POST'])
+@app.route("/profile/update", methods=["POST"])
+@login_required
 def update_profile():
-    if 'username' not in session:
-        return redirect(url_for('login_page'))
-
-    username = session['username']
-    updated_data = {
-        'first_name': request.form['first_name'],
-        'last_name': request.form['last_name'],
-        'organization_name': request.form['organization_name'],
-        'location': request.form['location'],
-        'phone_number': request.form['phone_number'],
-        'birthday': request.form['birthday']
-    }
-
-    collection.update_one({'username': username}, {'$set': updated_data})
-
-    return redirect(url_for('profile_page'))
+    if session.get("demo"):
+        return "Demo profiles are read-only.", 403
+    fields = ("first_name", "last_name", "organization_name", "location", "phone_number", "birthday")
+    updated_data = {field: request.form.get(field, "").strip() for field in fields}
+    try:
+        get_users_collection().update_one({"username": session["username"]}, {"$set": updated_data})
+    except (RuntimeError, PyMongoError):
+        app.logger.exception("Profile update could not access MongoDB")
+        return "Profile service is temporarily unavailable.", 503
+    return redirect(url_for("profile_page"))
 
 
-# -------------------------------------------------------------
-# 4️⃣ FIXED PREDICT ROUTE — WORKS WITH ANY CSV
-# -------------------------------------------------------------
-@app.route('/predict', methods=['POST'])
+@app.route("/predict", methods=["POST"])
+@login_required
 def predict():
-    if 'file' not in request.files:
-        return "No file uploaded"
-
-    file = request.files['file']
-    if file.filename == '':
-        return "File name is empty"
-
-    data = pd.read_csv(file)
-
-    # FIX: Ensure Class exists
-    if 'Class' not in data.columns:
-        if 'fraudulent' in data.columns:
-            data.rename(columns={'fraudulent': 'Class'}, inplace=True)
-        elif 'label' in data.columns:
-            data.rename(columns={'label': 'Class'}, inplace=True)
-        elif 'class' in data.columns:
-            data.rename(columns={'class': 'Class'}, inplace=True)
-        else:
-            data['Class'] = 1
-
-    data['Class'] = pd.to_numeric(data['Class'], errors='coerce').fillna(0).astype(int)
-
-    # Stats
-    statistical_analysis = data.describe()
-    fraudulent_count = (data['Class'] == 1).sum()
-    non_fraudulent_count = (data['Class'] == 0).sum()
-
-    X = data.drop(columns=["Class"])
-    y = data["Class"]
-
-    # ------------------------------------------------
-    # FIX: Encode categorical text columns to numeric
-    # ------------------------------------------------
-    label_enc = LabelEncoder()
-
-    for col in X.columns:
-        if X[col].dtype == 'object':  
-            X[col] = label_enc.fit_transform(X[col].astype(str))
-
-    # ML MODELS
-    iso_forest = IsolationForest()
-    iso_forest.fit(X)
-    iso_preds = iso_forest.predict(X)
-    iso_accuracy = accuracy_score(y, [-1 if p == -1 else 0 for p in iso_preds])
-    iso_error = 1 - iso_accuracy
-    iso_report = classification_report(y, [-1 if p == -1 else 0 for p in iso_preds])
-
-    svm_model = SVC()
-    svm_model.fit(X, y)
-    svm_preds = svm_model.predict(X)
-    svm_accuracy = accuracy_score(y, svm_preds)
-    svm_error = 1 - svm_accuracy
-    svm_report = classification_report(y, svm_preds)
-
-    log_model = LogisticRegression()
-    log_model.fit(X, y)
-    log_preds = log_model.predict(X)
-    log_accuracy = accuracy_score(y, log_preds)
-    log_error = 1 - log_accuracy
-    log_report = classification_report(y, log_preds)
-
+    uploaded_file = request.files.get("file")
+    if uploaded_file is None or not uploaded_file.filename:
+        return "Choose a CSV file to upload.", 400
+    safe_name = secure_filename(uploaded_file.filename)
+    if os.path.splitext(safe_name)[1].lower() != ".csv":
+        return "Only .csv files are supported.", 400
+    try:
+        data = pd.read_csv(uploaded_file, low_memory=False)
+        analysis = evaluate_fraud_dataset(data)
+    except (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError):
+        return "The uploaded file is not a readable CSV.", 400
+    except ValueError as error:
+        return str(error), 400
+    except Exception:
+        app.logger.exception("Fraud analysis failed")
+        return "The dataset could not be analyzed. Check its columns and values.", 422
+    models = analysis["models"]
     return render_template(
-        'admin.html',
-        username=session['username'],
-        statistical_analysis=statistical_analysis,
-        fraudulent_count=fraudulent_count,
-        non_fraudulent_count=non_fraudulent_count,
-        iso_forest_accuracy=iso_accuracy,
-        iso_forest_error=iso_error,
-        iso_forest_classification_report=iso_report,
-        svm_accuracy=svm_accuracy,
-        svm_error=svm_error,
-        svm_classification_report=svm_report,
-        logistic_accuracy=log_accuracy,
-        logistic_error=log_error,
-        logistic_classification_report=log_report
+        "admin.html",
+        username=session["username"],
+        statistical_analysis=analysis["statistical_analysis"],
+        fraudulent_count=analysis["fraudulent_count"],
+        non_fraudulent_count=analysis["non_fraudulent_count"],
+        iso_forest_accuracy=models["Isolation Forest"]["accuracy"],
+        iso_forest_error=models["Isolation Forest"]["error_rate"],
+        iso_forest_classification_report=models["Isolation Forest"]["classification_report"],
+        svm_accuracy=models["Linear SVM"]["accuracy"],
+        svm_error=models["Linear SVM"]["error_rate"],
+        svm_classification_report=models["Linear SVM"]["classification_report"],
+        logistic_accuracy=models["Logistic Regression"]["accuracy"],
+        logistic_error=models["Logistic Regression"]["error_rate"],
+        logistic_classification_report=models["Logistic Regression"]["classification_report"],
+        model_metrics=models,
+        analysis=analysis,
     )
 
 
-@app.route('/logout')
+@app.route("/logout")
 def logout():
-    session.pop('username', None)
-    return redirect(url_for('index'))
+    session.clear()
+    return redirect(url_for("index"))
 
 
-# -------------------------------
-# 5️⃣ RUN APP
-# -------------------------------
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+    app.run(
+        host="127.0.0.1",
+        port=int(os.getenv("PORT", "5000")),
+        debug=os.getenv("FLASK_DEBUG", "false").lower() == "true",
+    )
