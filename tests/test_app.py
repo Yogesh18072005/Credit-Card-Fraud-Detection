@@ -30,3 +30,19 @@ def test_model_artifacts_are_saved_with_manifest(tmp_path, monkeypatch):
     assert saved == manifest
     assert saved["models"]["Demo Model"]["threshold"] == 0.42
     assert "pipelines" not in analysis
+
+
+def test_saved_model_inference_requires_a_registered_artifact(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.MODEL_DIR", tmp_path)
+    app.config["TESTING"] = True
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session["username"] = "test-user"
+
+    response = client.post(
+        "/api/predict",
+        data={"model": "Random Forest", "file": ( __import__("io").BytesIO(b"amount,merchant\\n10,A\\n"), "transactions.csv")},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 404
+    assert b"No saved model" in response.data
