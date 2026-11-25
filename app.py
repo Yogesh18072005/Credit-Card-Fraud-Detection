@@ -91,7 +91,7 @@ def login_page():
 def login():
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
-    if DEMO_LOGIN_ENABLED and username == "demo" and password == os.getenv("DEMO_PASSWORD", ""):
+    if (DEMO_LOGIN_ENABLED and os.getenv("DEMO_PASSWORD") and username == os.getenv("DEMO_USERNAME", "demo") and password == os.getenv("DEMO_PASSWORD")):
         session.clear()
         session.update(username="Demo User", demo=True)
         return redirect(url_for("dashboard"))
