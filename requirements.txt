@@ -8,3 +8,4 @@ scikit-learn>=1.7,<2
 werkzeug>=3.1,<4
 gunicorn>=23,<24
 pytest>=8.3,<9
+joblib>=1.4,<2
